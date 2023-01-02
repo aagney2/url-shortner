@@ -1,52 +1,55 @@
 # frozen_string_literal: true
-
+require "browser"
 class UrlsController < ApplicationController
+  # urls_path
   def index
     # recent 10 short urls
     @url = Url.new
-    @urls = [
-      Url.new(short_url: 'ABCDE', original_url: 'http://google.com', created_at: Time.now),
-      Url.new(short_url: 'ABCDG', original_url: 'http://facebook.com', created_at: Time.now),
-      Url.new(short_url: 'ABCDF', original_url: 'http://yahoo.com', created_at: Time.now)
-    ]
+    @urls = Url.latest.limit(10)
   end
-
+  # urls_path
   def create
-    raise 'add some code'
+    original_url = params['url']['original_url']
+    @url = Url.new(original_url: original_url)
+    if @url.save
+      flash[:notice] = "Url was successfully created"
+    else
+      @urls = Url.latest.limit(10)
+      render 'index'
+      flash[:notice] = @url.errors.full_messages.join(", ")
+    end
     # create a new URL record
   end
-
+  # url_path(:id)
   def show
-    @url = Url.new(short_url: 'ABCDE', original_url: 'http://google.com', created_at: Time.now)
-    # implement queries
-    @daily_clicks = [
-      ['1', 13],
-      ['2', 2],
-      ['3', 1],
-      ['4', 7],
-      ['5', 20],
-      ['6', 18],
-      ['7', 10],
-      ['8', 20],
-      ['9', 15],
-      ['10', 5]
-    ]
-    @browsers_clicks = [
-      ['IE', 13],
-      ['Firefox', 22],
-      ['Chrome', 17],
-      ['Safari', 7]
-    ]
-    @platform_clicks = [
-      ['Windows', 13],
-      ['macOS', 22],
-      ['Ubuntu', 17],
-      ['Other', 7]
-    ]
+    @url = Url.find_by(short_url: params[:url])
+    if @url.nil?
+      render file: "public/404.html"
+    else
+      @daily_clicks = []
+      clicks = @url.clicks
+      clicks_hash = clicks.group('date(created_at)').count
+      clicks_hash.each_pair do |k,v|
+        @daily_clicks << [k.to_s, v]
+      end
+
+      @browsers_clicks = clicks.group('browser').count.to_a
+
+      @platform_clicks = clicks.group('platform').count.to_a
+    end
   end
 
   def visit
-    # params[:short_url]
-    render plain: 'redirecting to url...'
+    url =  Url.find_by(short_url: params[:short_url])
+    if url.nil?
+      render file: "public/404.html"
+    else
+      clicks = url.clicks_count + 1
+      url.update(clicks_count: clicks)
+      browser = Browser.new(request.env['HTTP_USER_AGENT'], accept_language: "en-us")
+      url.clicks.create(browser: browser.name, platform: browser.platform.name)
+      # params[:short_url]
+      redirect_to url.original_url
+    end
   end
 end
